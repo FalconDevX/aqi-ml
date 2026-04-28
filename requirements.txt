@@ -1,0 +1,16 @@
+# Przetwarzanie danych
+pandas
+numpy
+scikit-learn
+joblib
+
+# Deep Learning
+tensorflow>=2.15.0
+
+# Wizualizacja i analiza
+matplotlib
+seaborn
+
+# Dodatki do pracy lokalnej
+jupyter
+ipykernel
