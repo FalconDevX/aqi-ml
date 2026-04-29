@@ -21,7 +21,7 @@ def create_features(df, target_col='PM10'):
     data['month_cos'] = np.cos(2 * np.pi * data['month'] / 12)
 
     # features from the past (lags)
-    for lag in [1, 2, 3, 24, 48]:
+    for lag in [1,2,3,4,5,6, 12, 24, 25, 26, 48, 72, 168]:
         data[f'PM10_lag_{lag}'] = data[target_col].shift(lag)
 
     return data
