@@ -7,6 +7,7 @@ from sklearn.metrics import mean_absolute_error
 history_hours = 48
 prediction_hours = 10
 
+#take always second column from csv file as a station
 def verify_model(model_path, csv_path, index_name):
     """
     Function loading the previously trained model from the given path.
@@ -20,6 +21,8 @@ def verify_model(model_path, csv_path, index_name):
 
     # Loading new test data
     df_new = pd.read_csv(csv_path)
+    df_new = df_new[['Time', df_new.columns[1]]].copy()
+    df_new.rename(columns={df_new.columns[1]: index_name}, inplace=True)
     df_new = df_new.dropna(subset=[index_name, 'Time'])
     df_new['Time'] = pd.to_datetime(df_new['Time'])
     df_new.sort_values('Time', inplace=True)
@@ -91,29 +94,44 @@ def verify_model(model_path, csv_path, index_name):
     predictions_average = [np.mean(predictions_by_time[data]) for data in daty]
     mae_aggregated = mean_absolute_error(real, predictions_average)
 
-    print(f"\nGOTOWE!")
-    print(f"Wykonano {number_of_sessions} sesji prognozy po {prediction_hours} godzin.")
-    print(f"Łącznie wygenerowano {len(all_predictions)} predykcji.")
-    print(f"MAE dla wszystkich kroków ze wszystkich sesji: {mae_all_sessions:.2f} µg/m³")
-    print(f"MAE po uśrednieniu nakładających się prognoz w czasie: {mae_aggregated:.2f} µg/m³")
+    print(f"\nDONE!")
+    print(f"Executed {number_of_sessions} sessions of prediction for {prediction_hours} hours.")
+    print(f"Total {len(all_predictions)} predictions.")
+    print(f"MAE for all steps in all sessions: {mae_all_sessions:.2f} µg/m³")
+    print(f"MAE by averaging overlapping predictions by time: {mae_aggregated:.2f} µg/m³")
 
-    # generating the aggregated plot for the whole data range
-    plt.figure(figsize=(12, 6))
-    plt.plot(daty, real, label='Real ' + index_name, color='blue', linewidth=2)
-    plt.plot(daty, predictions_average, label='Average recursive prediction 24h', color='orange', linestyle='--', linewidth=2)
-    plt.title('Recursive prediction ' + index_name + ' 24h on the whole data range')
-    plt.xlabel('Data')
-    plt.ylabel(f'{index_name} concentration (µg/m³)')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.xticks(rotation=45)
+    plt.style.use('dark_background')
+
+    plt.figure(figsize=(12, 6), dpi=120)
+
+    real_color = '#4FC3F7'        
+    pred_color = '#FFB74D'       
+
+    plt.plot(daty, real, label=f'Real {index_name}', color=real_color, linewidth=2.2)
+
+    plt.plot(daty, predictions_average, label='Recursive forecast (24h avg)', color=pred_color, linestyle='--', linewidth=2.2)
+
+    plt.title(f'{index_name} — 24h Recursive Forecast', fontsize=14, weight='bold', pad=15)
+
+    plt.xlabel('Date', fontsize=11)
+    plt.ylabel(f'{index_name} (µg/m³)', fontsize=11)
+    plt.grid(True, linestyle='--', alpha=0.15)
+
+    plt.legend(frameon=False, fontsize=10)
+
+    plt.xticks(rotation=45, fontsize=9)
+    plt.yticks(fontsize=9)
+
+    ax = plt.gca()
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    ax.spines['left'].set_color('#888')
+    ax.spines['bottom'].set_color('#888')
+
     plt.tight_layout()
 
+    plt.savefig( f'verif_images/verify_{index_name}_model.png', dpi=300, bbox_inches='tight', facecolor='#0E1117' )
+    print(f"Saved plot to 'verif_images/verify_{index_name}_model.png'")
+
     plt.show()
-
-    # saving the plot
-    #plt.savefig(f'verify_{index_name}_model.png')
-    #print(f"Saved plot to 'verify_{index_name}_model.png'")
-
-if __name__ == "__main__":
-    verify_model('pm10_model.joblib', 'data/PM10_1g_joint_2017-2023.csv', 'PM10')

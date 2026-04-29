@@ -5,9 +5,10 @@ from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 import joblib
 
-def create_features(df, target_col):
+def create_features(df):
     """Function creating time features and lags."""
     data = df.copy()
+    target = data.columns[0]
 
     #time features
     data['hour'] = data.index.hour
@@ -23,44 +24,43 @@ def create_features(df, target_col):
 
     # features from the past (lags)
     for lag in [1, 2, 3, 24, 48]:
-        data[f'PM10_lag_{lag}'] = data[target_col].shift(lag)
+        data[f'{target}_lag_{lag}'] = data[target].shift(lag)
 
     return data
 
-def train_and_save_model(csv_path, best_station="MpKrakWadow-PM10-1g", index_name="PM10"):
+def train_and_save_model(csv_path):
     "function preparing data and training model"
-
     df = pd.read_csv(csv_path)
-    data = df[['Time', best_station]].copy()
-    data.rename(columns={best_station: 'PM10'}, inplace=True)
+    target = df.columns[1]
+    data = df[['Time', target]].copy()
+    data.rename(columns={target: target}, inplace=True)
     
     data['Time'] = pd.to_datetime(data['Time'])
     data.sort_values('Time', inplace=True)
     data.set_index('Time', inplace=True)
 
-    data[index_name] = data[index_name].interpolate(method='linear').bfill().ffill()
+    data[target] = data[target].interpolate(method='linear').bfill().ffill()
 
     #features engineering (lags )
-    data = create_features(data, target_col=index_name)
+    data = create_features(data)
     data.dropna(inplace=True)
 
     features = [
         'hour', 'dayofweek', 'month', 'dayofyear', 
         'hour_sin', 'hour_cos', 'month_sin', 'month_cos',
-        'PM10_lag_1', 'PM10_lag_2', 'PM10_lag_3', 'PM10_lag_24', 'PM10_lag_48'
+        f'{target}_lag_1', f'{target}_lag_2', f'{target}_lag_3',
+        f'{target}_lag_24', f'{target}_lag_48'
     ]
 
     x = data[features]
-    y = data[index_name]
+    y = data[target]
 
     #training and split 80% training, 20% test
     train_size = int(len(data) * 0.8)
     x_train, x_test = x.iloc[:train_size], x.iloc[train_size:]
     y_train, y_test = y.iloc[:train_size], y.iloc[train_size:]
 
-    model = HistGradientBoostingRegressor(max_iter=200, random_state=42)
-
-    model = HistGradientBoostingRegressor(max_iter=200, random_state=42)
+    model = HistGradientBoostingRegressor(max_iter=1000, random_state=42)
     model.fit(x_train, y_train)
 
     #check mae = mean absolute error
@@ -68,8 +68,8 @@ def train_and_save_model(csv_path, best_station="MpKrakWadow-PM10-1g", index_nam
     mae = mean_absolute_error(y_test, y_pred)
 
     #save model
-    joblib.dump(model, f'{index_name}_model.joblib')
-    print(f"Saved model to '{index_name}_model.joblib'")
+    joblib.dump(model, f'models/{target}_model.joblib')
+    print(f"Saved model to 'models/{target}_model.joblib'")
     print(f"MAE: {mae:.2f} µg/m³")
 
-train_and_save_model("data/PM10_1g_joint_2017-2023.csv", "MpTarRoSitko-PM10-1g", "PM10")
+train_and_save_model("data/merged_PM10_2017_2023.csv")
