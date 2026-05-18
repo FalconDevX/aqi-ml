@@ -28,18 +28,17 @@ def create_features(df):
 
     return data
 
-def train_and_save_model(csv_path):
+def train_and_save_model(csv_path, index_name):
     "function preparing data and training model"
     df = pd.read_csv(csv_path)
-    target = df.columns[1]
-    data = df[['Time', target]].copy()
-    data.rename(columns={target: target}, inplace=True)
+    data = df[['Time', index_name]].copy()
+    data.rename(columns={index_name: index_name}, inplace=True)
     
     data['Time'] = pd.to_datetime(data['Time'])
     data.sort_values('Time', inplace=True)
     data.set_index('Time', inplace=True)
 
-    data[target] = data[target].interpolate(method='linear').bfill().ffill()
+    data[index_name] = data[index_name].interpolate(method='linear').bfill().ffill()
 
     #features engineering (lags )
     data = create_features(data)
@@ -48,12 +47,12 @@ def train_and_save_model(csv_path):
     features = [
         'hour', 'dayofweek', 'month', 'dayofyear', 
         'hour_sin', 'hour_cos', 'month_sin', 'month_cos',
-        f'{target}_lag_1', f'{target}_lag_2', f'{target}_lag_3',
-        f'{target}_lag_24', f'{target}_lag_48'
+        f'{index_name}_lag_1', f'{index_name}_lag_2', f'{index_name}_lag_3',
+        f'{index_name}_lag_24', f'{index_name}_lag_48'
     ]
 
     x = data[features]
-    y = data[target]
+    y = data[index_name]
 
     #training and split 80% training, 20% test
     train_size = int(len(data) * 0.8)
@@ -68,8 +67,8 @@ def train_and_save_model(csv_path):
     mae = mean_absolute_error(y_test, y_pred)
 
     #save model
-    joblib.dump(model, f'models/{target}_model.joblib')
-    print(f"Saved model to 'models/{target}_model.joblib'")
+    joblib.dump(model, f'models/{index_name}_model.joblib')
+    print(f"Saved model to 'models/{index_name}_model.joblib'")
     print(f"MAE: {mae:.2f} µg/m³")
 
-train_and_save_model("data/merged_PM10_2017_2023.csv")
+# train_and_save_model("data/merged_PM10_2017_2023.csv")

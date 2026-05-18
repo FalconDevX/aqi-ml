@@ -69,11 +69,11 @@ def verify_model(model_path, csv_path, index_name):
                 'hour_cos': np.cos(2 * np.pi * hour / 24),
                 'month_sin': np.sin(2 * np.pi * month / 12),
                 'month_cos': np.cos(2 * np.pi * month / 12),
-                'PM10_lag_1': history_index[-1],
-                'PM10_lag_2': history_index[-2],
-                'PM10_lag_3': history_index[-3],
-                'PM10_lag_24': history_index[-24],
-                'PM10_lag_48': history_index[-48]
+                f'{index_name}_lag_1': history_index[-1],
+                f'{index_name}_lag_2': history_index[-2],
+                f'{index_name}_lag_3': history_index[-3],
+                f'{index_name}_lag_24': history_index[-24],
+                f'{index_name}_lag_48': history_index[-48]
             }])
 
             prediction = model.predict(input_data)[0]
