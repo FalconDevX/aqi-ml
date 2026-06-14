@@ -71,4 +71,4 @@ def train_and_save_model(csv_path, index_name):
     print(f"Saved model to 'models/{index_name}_model.joblib'")
     print(f"MAE: {mae:.2f} µg/m³")
 
-# train_and_save_model("data/merged_PM10_2017_2023.csv")
+train_and_save_model("data/PM1.csv","PM1")
