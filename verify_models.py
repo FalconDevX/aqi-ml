@@ -2,11 +2,33 @@ import pandas as pd
 import numpy as np
 import joblib
 import matplotlib.pyplot as plt
-from sklearn.metrics import mean_absolute_error
+import matplotlib.dates as mdates
+from matplotlib.legend_handler import HandlerBase
+from matplotlib.patches import Rectangle
+from sklearn.metrics import mean_absolute_error, r2_score
 
-history_hours = 24
+history_hours = 48
 prediction_hours = 10
 max_lag = 48
+
+
+class LegendTextHandle:
+    pass
+
+
+class LegendTextOnly(HandlerBase):
+    def create_artists(self, legend, orig_handle, xdescent, ydescent, width, height, fontsize, trans):
+        artist = Rectangle(
+            (xdescent, ydescent),
+            width,
+            height,
+            linewidth=0,
+            facecolor='none',
+            edgecolor='none',
+            visible=False,
+        )
+        return [artist]
+
 
 def load_station_csv(csv_path, index_name):
     df = pd.read_csv(csv_path)
@@ -107,6 +129,11 @@ def verify_model(model_path, csv_path, index_name, context_csv_path=None):
     all_predictions = []
     number_of_sessions = 0
 
+    horizon_results = {
+        h: {"real": [], "pred": []}
+        for h in range(1, prediction_hours + 1)
+    }
+
     for start_index in session_start_indices(len(df_new)):
         history_start = max(0, start_index - history_hours)
         history_index = df_new[index_name].iloc[history_start:start_index].tolist()
@@ -139,7 +166,11 @@ def verify_model(model_path, csv_path, index_name, context_csv_path=None):
             prediction = model.predict(input_data)[0]
             real = df_new[index_name].iloc[current_index]
 
-            # adding the prediction to the history, so the next step can use the prediction instead of the new measurement.
+            horizon = step + 1
+
+            horizon_results[horizon]["real"].append(real)
+            horizon_results[horizon]["pred"].append(prediction)
+
             history_index.append(prediction)
 
             all_predictions.append(prediction)
@@ -147,60 +178,237 @@ def verify_model(model_path, csv_path, index_name, context_csv_path=None):
             real_by_time[target_time] = real
             predictions_by_time.setdefault(target_time, []).append(prediction)
 
-    # calculating the error on the whole set of sessions and by aggregation by time
     mae_all_sessions = mean_absolute_error(all_real, all_predictions)
+    r2_all_sessions = r2_score(all_real, all_predictions)
     daty = sorted(predictions_by_time.keys())
     real = [real_by_time[data] for data in daty]
     predictions_average = [np.mean(predictions_by_time[data]) for data in daty]
     mae_aggregated = mean_absolute_error(real, predictions_average)
+    r2 = r2_score(real, predictions_average)
 
     print(f"\nDONE!")
     print(f"Executed {number_of_sessions} sessions of prediction for {prediction_hours} hours.")
     print(f"Total {len(all_predictions)} predictions.")
     print(f"MAE for all steps in all sessions: {mae_all_sessions:.2f} µg/m³")
+    print(f"R2 for all steps in all sessions: {r2_all_sessions:.3f}")
     print(f"MAE by averaging overlapping predictions by time: {mae_aggregated:.2f} µg/m³")
+    print(f"R² = {r2:.3f}")
 
-    plt.style.use('dark_background')
+    horizons = []
+    r2_values = []
+    mae_values = []
 
-    plt.figure(figsize=(12, 6), dpi=120)
+    print("\nMetrics by forecast horizon:")
 
-    real_color = '#4FC3F7'        
-    pred_color = '#FFB74D'       
+    for horizon in range(1, prediction_hours + 1):
+        y_true = horizon_results[horizon]["real"]
+        y_pred = horizon_results[horizon]["pred"]
 
-    plt.plot(daty, real, label=f'Real {index_name}', color=real_color, linewidth=2.2)
+        mae_h = mean_absolute_error(y_true, y_pred)
+        r2_h = r2_score(y_true, y_pred)
 
-    plt.plot(
-        daty, predictions_average,
-        label=f'Recursive forecast ({prediction_hours}h avg)',
-        color=pred_color, linestyle='--', linewidth=2.2,
+        horizons.append(horizon)
+        r2_values.append(r2_h)
+        mae_values.append(mae_h)
+
+        print(f"+{horizon}h -> MAE: {mae_h:.2f} µg/m³, R²: {r2_h:.3f}")
+
+    fig_r2, ax_r2 = plt.subplots(figsize=(10, 5))
+
+    bg = '#070709'
+    fig_r2.patch.set_facecolor(bg)
+    ax_r2.set_facecolor(bg)
+
+    ax_r2.plot(
+        horizons,
+        r2_values,
+        marker='o',
+        linewidth=2.5,
+        color='#4ADE80',
     )
 
-    plt.title(
-        f'{index_name} — {prediction_hours}h forecast ({history_hours}h history)',
-        fontsize=14, weight='bold', pad=15,
+    ax_r2.axhline(
+        0,
+        color='white',
+        alpha=0.15,
+        linewidth=1,
     )
 
-    plt.xlabel('Date', fontsize=11)
-    plt.ylabel(f'{index_name} (µg/m³)', fontsize=11)
-    plt.grid(True, linestyle='--', alpha=0.15)
+    ax_r2.grid(
+        color='white',
+        alpha=0.05,
+        linewidth=0.8,
+    )
 
-    plt.legend(frameon=False, fontsize=10)
+    for spine in ax_r2.spines.values():
+        spine.set_visible(False)
 
-    plt.xticks(rotation=45, fontsize=9)
-    plt.yticks(fontsize=9)
+    ax_r2.tick_params(
+        colors='#9AA4B2',
+        labelsize=11,
+        length=0,
+    )
 
-    ax = plt.gca()
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    ax_r2.set_xticks(horizons)
 
-    ax.spines['left'].set_color('#888')
-    ax.spines['bottom'].set_color('#888')
+    ax_r2.set_xlabel(
+        'Prediction horizon [h]',
+        color='#9AA4B2',
+        fontsize=12,
+        labelpad=12,
+    )
+
+    ax_r2.set_ylabel(
+        'R² score',
+        color='#9AA4B2',
+        fontsize=12,
+        labelpad=12,
+    )
+
+    ax_r2.set_title(
+        f'{index_name} - R² by prediction horizon',
+        fontsize=18,
+        color='#F0F0F0',
+        pad=18,
+    )
+
+    for x, y in zip(horizons, r2_values):
+        ax_r2.text(
+            x,
+            y,
+            f'{y:.2f}',
+            color='#D1D5DB',
+            fontsize=10,
+            ha='center',
+            va='bottom',
+        )
 
     plt.tight_layout()
 
-    plt.savefig( f'verif_images/verify_{index_name}_model.png', dpi=300, bbox_inches='tight', facecolor='#0E1117' )
-    print(f"Saved plot to 'verif_images/verify_{index_name}_model.png'")
+    r2_output_path = f'verif_images/r2_by_horizon_{index_name}.png'
+    plt.savefig(
+        r2_output_path,
+        dpi=300,
+        bbox_inches='tight',
+        facecolor=bg,
+    )
+
+    print(f"Saved R² horizon plot to '{r2_output_path}'")
 
     plt.show()
 
-verify_model("models/PM25_model.joblib", "data/test_PM25.csv", "PM25")
+    plt.rcParams['font.family'] = 'sans-serif'
+    plt.rcParams['font.sans-serif'] = ['Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif']
+
+    plt.style.use('dark_background')
+
+    fig, ax = plt.subplots(figsize=(15, 7))
+
+    bg = '#070709'
+    fig.patch.set_facecolor(bg)
+    ax.set_facecolor(bg)
+
+    color_real = '#FF9F43'
+    color_pred = '#4ADE80'
+
+    ax.plot(
+        daty,
+        real,
+        color=color_real,
+        linewidth=6,
+        alpha=0.1,
+    )
+
+    ax.plot(
+        daty,
+        real,
+        color=color_real,
+        linewidth=2.5,
+        label='Real',
+    )
+
+    ax.plot(
+        daty,
+        predictions_average,
+        color=color_pred,
+        linewidth=1.5,
+        linestyle='--',
+        label='Forecast',
+    )
+
+    for spine in ax.spines.values():
+        spine.set_visible(False)
+
+    ax.grid(
+        color='#FFFFFF',
+        alpha=0.03,
+        linewidth=0.8,
+    )
+
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%d.%m %H:%M'))
+
+    ax.tick_params(
+        colors='#7A8490',
+        labelsize=11,
+        length=0,
+    )
+
+    plt.setp(ax.get_xticklabels(), rotation=35, ha='right')
+
+    ax.set_xlabel('Data', color='#9AA4B2', fontsize=12, labelpad=12)
+    ax.set_ylabel(f'{index_name} (µg/m³)', color='#9AA4B2', fontsize=12, labelpad=12)
+
+    ax.set_title(
+        f'{index_name} - {prediction_hours}h recursive forecast',
+        fontsize=22,
+        color='#F0F0F0',
+        weight='normal',
+        pad=25,
+    )
+
+    exact_horizon = prediction_hours
+    mae_exact_horizon = mae_values[exact_horizon - 1]
+    r2_exact_horizon = r2_values[exact_horizon - 1]
+
+    handles, labels = ax.get_legend_handles_labels()
+
+    metric_labels = [
+        f'Aggregated MAE = {mae_aggregated:.2f} µg/m³',
+        f'Aggregated R² = {r2:.3f}',
+        f'MAE +{exact_horizon}h = {mae_exact_horizon:.2f} µg/m³',
+        f'R² +{exact_horizon}h = {r2_exact_horizon:.3f}',
+    ]
+
+    for metric_label in metric_labels:
+        handles.append(LegendTextHandle())
+        labels.append(metric_label)
+
+    leg = ax.legend(
+        handles=handles,
+        labels=labels,
+        handler_map={LegendTextHandle: LegendTextOnly()},
+        facecolor='#101218',
+        edgecolor='#2A3240',
+        labelcolor='#E0E0E0',
+        fontsize=12,
+        loc='upper left',
+        bbox_to_anchor=(0.01, 0.93),
+        framealpha=0.95,
+    )
+
+    for metric_label in leg.get_texts()[-4:]:
+        metric_label.set_color('#FFC48A')
+        metric_label.set_fontweight('bold')
+        metric_label.set_fontsize(13)
+
+    plt.tight_layout()
+
+    output_path = f'verif_images/verify_{index_name}_minimal.png'
+    plt.savefig(output_path, dpi=300, bbox_inches='tight', facecolor=bg)
+    print(f"Saved plot to '{output_path}'")
+
+    plt.show()
+
+if __name__ == '__main__':
+    verify_model("models/exp/PM10_model.joblib", "data/old/test_PM10.csv", "PM10")
